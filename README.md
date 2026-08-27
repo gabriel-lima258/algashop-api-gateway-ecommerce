@@ -1,1 +1,1 @@
-# algashop-api-gateway
+# algashop-api-gateway-ecommerce
