@@ -4,10 +4,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 
 @Configuration
+@EnableReactiveMethodSecurity // habilita o pre authorize nos endpoints
 public class GatewayEcommerceSecurityConfig {
 
     // valida os tokens de authorization server dentro de gateway, usamos o gateway como resource para tratar isso
@@ -20,10 +22,6 @@ public class GatewayEcommerceSecurityConfig {
                         .pathMatchers("/actuator/**").permitAll()
                         // habilita o envio de options via navegador e evita bloqueio de requisicao
                         .pathMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
-                        // o Fastpay chama o webhook sem token; o billing tambem libera /api/v1/webhooks/**
-                        // ATENCAO A ORDEM: a primeira regra que casa vence. Este permitAll precisa
-                        // vir ANTES do authenticated de /api/** - depois dele, vira codigo morto
-                        // e o FastPay (que nao manda token) toma 401.
                         .pathMatchers("/api/v1/webhooks/**").permitAll()
                         .pathMatchers("/api/**").authenticated()
                         .anyExchange().denyAll()
