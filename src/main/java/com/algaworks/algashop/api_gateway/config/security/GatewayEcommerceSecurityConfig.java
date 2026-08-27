@@ -17,10 +17,13 @@ public class GatewayEcommerceSecurityConfig {
         http.cors(Customizer.withDefaults())
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(authorize -> authorize
-                        .pathMatchers("/actuator/health").permitAll()
+                        .pathMatchers("/actuator/**").permitAll()
                         // habilita o envio de options via navegador e evita bloqueio de requisicao
                         .pathMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                         // o Fastpay chama o webhook sem token; o billing tambem libera /api/v1/webhooks/**
+                        // ATENCAO A ORDEM: a primeira regra que casa vence. Este permitAll precisa
+                        // vir ANTES do authenticated de /api/** - depois dele, vira codigo morto
+                        // e o FastPay (que nao manda token) toma 401.
                         .pathMatchers("/api/v1/webhooks/**").permitAll()
                         .pathMatchers("/api/**").authenticated()
                         .anyExchange().denyAll()
