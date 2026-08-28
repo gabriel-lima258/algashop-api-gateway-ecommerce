@@ -1,3 +1,7 @@
+# Configurações estáveis, que não variam entre ambientes: nome da aplicação, rotas,
+# resiliência, actuator e logging. O que varia por ambiente (Redis, timeouts,
+# OAuth2 e Eureka) fica nos arquivos *-env.
+
 server:
   port: 9999
 
@@ -11,26 +15,12 @@ logging:
 # como billing e ordering usa partes do endpoints igual customers, devemos priorizar quem tem ordem, logo billing vem primeiro
 # pois ele é mais especifico, sem isso toda requisição feita em billing cai no ordering
 
-# RewritePath=/public/products(?<segment>/?.*), /api/v1/products$\{segment}
-# redireciona qualquer rota /products para o path correto, temos diversos filters interresantes
-
 # usamos lb:// para identificar como load balance e passamos o nome do serviço registrado no service registry em uri
 # assim não precisamos passar o path completo http://serviço:0000
 # DedupeResponseHeader remove duplicacoes de headers e RETAIN_FIRST prioriza configs de gateway ao inves do serviço
 spring:
   application:
     name: api-gateway
-  data:
-    redis: # conexão usada pelo RequestRateLimiter (contadores do token bucket)
-      host: algashop-redis
-      port: 6379
-      password: algashop
-      database: 3
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://auth.algashop.local:9000
   cloud:
     gateway:
       server:
@@ -51,26 +41,11 @@ spring:
                 backoff:
                   firstBackoff: 10ms # primeira tentativa
                   maxBackoff: 20ms # ultima tentativa
-          httpclient: # global timeout resilience
-            connect-timeout: 1000
-            response-timeout: 5000
-          globalcors: # cors global para todas as rotas
-            add-to-simple-url-handler-mapping: true
-            cors-configurations:
-              '[/**]':
-                allowedOrigins: http://admin.algashop.local:4200
-                allowedHeaders: '*'
-                allowedMethods:
-                  - GET
-                  - POST
-                  - PUT
-                  - DELETE
-                  - OPTIONS
           routes:
             - id: billing-route
               uri: lb://billing
               predicates:
-                - Path=/api/v1/customers/me/orders/{orderId}/invoice,/api/v1/orders/{orderId}/invoice,/api/v1/customers/me/credit-cards/**
+                - Path=/api/v1/customers/me/credit-cards/**
             # webhook publico chamado pelo Fastpay, sem token - liberado no security do gateway
             - id: billing-webhook-route
               uri: lb://billing
@@ -80,7 +55,7 @@ spring:
             - id: ordering-route
               uri: lb://ordering
               predicates: # redireciona para uri
-                - Path=/api/v1/orders/**,/api/v1/customers/**,/api/v1/shipping-cost-previews
+                - Path=/api/v1/customers/**,/api/v1/shipping-cost-previews
               filters: # route circuit breaker resilience
                 - name: CircuitBreaker
                   args:
@@ -92,7 +67,7 @@ spring:
             - id: product-catalog-route
               uri: lb://product-catalog
               predicates:
-                - Path=/api/v1/products/**,/api/v1/categories/**,/api/v1/upload-requests/**
+                - Path=/api/v1/products/**,/api/v1/categories/**
                 - Method=GET,POST,PUT,DELETE,OPTIONS
               filters:
                 - LocalResponseCache=5m,30MB # local cache resilience (GET)
@@ -111,8 +86,6 @@ spring:
 
 eureka:
   client:
-    serviceUrl:
-      defaultZone: http://algashop-service-registry:8761/eureka
     registerWithEureka: false # não se registra como client
     fetchRegistry: true # busca os serviços dentro eureka
 
@@ -137,4 +110,3 @@ resilience4j.circuitbreaker:
       waitDurationInOpenState: 10s # tempo de circuito aberto
       maxWaitDurationInHalfOpenState: 30s # tempo meio aberto após o aberto
       registerHealthIndicator: true # indicador de saúde do circuto
-

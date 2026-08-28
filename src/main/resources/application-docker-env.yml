@@ -1,0 +1,8 @@
+# Ajustes para execução no Docker. Os hostnames dos parameters (algashop-redis,
+# algashop-localstack, algashop-service-registry) resolvem tanto no host (etc/hostnames)
+# quanto na rede do Docker, então quase nada precisa ser sobrescrito aqui.
+
+spring:
+  data:
+    redis:
+      host: algashop-redis

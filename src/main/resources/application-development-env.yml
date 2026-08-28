@@ -1,0 +1,40 @@
+# config.import traz os secrets e parameters da aws (LocalStack) para este arquivo env,
+# através de importação feita no etc/aws/init.sh (parameters.csv / secrets.csv).
+# prefix é usado para referenciar os valores de forma facil ex: ${gateway-ecommerce.params.redis.host}
+
+spring:
+  config:
+    import:
+      - aws-secretsmanager:/secret/algashop/gateway-ecommerce/redis?prefix=gateway-ecommerce.secrets.redis.
+      - aws-parameterstore:/config/algashop/gateway-ecommerce?prefix=gateway-ecommerce.params
+      - aws-parameterstore:/config/algashop/shared?prefix=shared.params
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      endpoint: http://algashop-localstack:4566 # em prod não precisa
+      credentials:
+        access-key: LSIAQAAAAAAVNCBMPNSG
+        secret-key: test
+    gateway:
+      server:
+        webflux:
+          httpclient: # global timeout resilience
+            connect-timeout: ${gateway-ecommerce.params.httpclient.connect-timeout}
+            response-timeout: ${gateway-ecommerce.params.httpclient.response-timeout}
+  data:
+    redis: # conexão usada pelo RequestRateLimiter (contadores do token bucket)
+      host: ${gateway-ecommerce.params.redis.host}
+      port: ${gateway-ecommerce.params.redis.port}
+      password: ${gateway-ecommerce.secrets.redis.password}
+      database: ${gateway-ecommerce.params.redis.database} # db separado do gateway admin (4) para nao compartilhar os buckets de rate limit
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${shared.params.auth-server-url} # url de authorization server
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${shared.params.service-registry-url}/eureka

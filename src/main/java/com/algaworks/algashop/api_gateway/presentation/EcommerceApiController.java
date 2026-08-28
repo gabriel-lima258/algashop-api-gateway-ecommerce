@@ -1,5 +1,7 @@
 package com.algaworks.algashop.api_gateway.presentation;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -7,6 +9,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,22 +41,43 @@ public class EcommerceApiController {
         this.webClient = webClient;
     }
 
+    private static final Logger log = LoggerFactory.getLogger(EcommerceApiController.class);
+
+    // resposta degradada de um ramo que falhou: mesmo formato do envelope paginado,
+    // com content vazio. Nao e "fallback que mente" - lista vazia e ausencia honesta.
+    private static final Map<String, Object> EMPTY_PAGE = Map.of("content", List.of());
+
     // interface assincronas que produz um valor ou nenhum, utilizamos o map para evitar dto
     @GetMapping
     @PreAuthorize("hasAuthority('SCOPE_products:read') and hasAuthority('SCOPE_categories:read')")
     public Mono<Map<String, Object>> getHome() {
-        Mono<Map> productList = webClient.get().uri("lb://product-catalog/api/v1/products?hasDiscount=true")
+        // ATENCAO: o httpclient.response-timeout do gateway NAO se aplica a este WebClient
+        // (aquela config e do proxy de rotas) - o timeout precisa estar aqui. E cada ramo
+        // degrada sozinho: categorias fora do ar nao derrubam os destaques, nem vice-versa.
+        Mono<Map<String, Object>> productList = webClient.get()
+                .uri("lb://product-catalog/api/v1/products?hasDiscount=true")
                 .retrieve()
-                .bodyToMono(Map.class);
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {})
+                .timeout(Duration.ofSeconds(5))
+                .onErrorResume(e -> {
+                    log.warn("Home composition: highlights failed, degrading to empty | {}", e.toString());
+                    return Mono.just(EMPTY_PAGE);
+                });
 
-        Mono<Map> categoriesList = webClient.get().uri("lb://product-catalog/api/v1/categories")
+        Mono<Map<String, Object>> categoriesList = webClient.get()
+                .uri("lb://product-catalog/api/v1/categories")
                 .retrieve()
-                .bodyToMono(Map.class);
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {})
+                .timeout(Duration.ofSeconds(5))
+                .onErrorResume(e -> {
+                    log.warn("Home composition: categories failed, degrading to empty | {}", e.toString());
+                    return Mono.just(EMPTY_PAGE);
+                });
 
         return Mono.zip(productList, categoriesList)
                 .map(tuple -> Map.of(
-                     "highlights", tuple.getT1().get("content"),
-                     "categories", tuple.getT2().get("content")
+                     "highlights", tuple.getT1().getOrDefault("content", List.of()),
+                     "categories", tuple.getT2().getOrDefault("content", List.of())
                 ));
     }
 }
